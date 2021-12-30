@@ -1,16 +1,18 @@
 #include <torch/torch.h>
 
-torch::Tensor distance(torch::Tensor d1, torch::Tensor d2) {
-    auto sortd1 = torch::argsort(d1);
-    auto sortd2 = torch::argsort(d2);
-    auto concatted = torch::cat({d1, d2}, 0);
-    auto sortedCat = std::get<0>(torch::sort(concatted, true, 0,false));
-    auto deltas = torch::diff(sortedCat);
-    auto d1Indices = searchsorted(d1.index({sortd1}),sortedCat.slice(0, 0, sortedCat.size(0) - 1), false, true);
-    auto d2Indices = searchsorted(d2.index({sortd2}),sortedCat.slice(0, 0, sortedCat.size(0) - 1), false, true);
-
-    auto d1cdf = d1Indices / d1.size(0);
-    auto d2cdf = d2Indices / d2.size(0);
-
-    return torch::sum(torch::mul(torch::abs(d1cdf - d2cdf), deltas));
+torch::Tensor distance(torch::Tensor tensor_a, torch::Tensor tensor_b, int p) {
+    tensor_a = tensor_a / (tensor_a.sum(-1, true) + 1e-14);
+    tensor_b = tensor_b / (tensor_b.sum(-1, true) + 1e-14);
+    auto cdf_tensor_a = torch::cumsum(tensor_a,-1);
+    auto cdf_tensor_b = torch::cumsum(tensor_b,-1);
+    torch::Tensor cdf_distance;
+    if(p == 1) {
+        cdf_distance = torch::abs((cdf_tensor_a - cdf_tensor_b)).sum(-1);
+    }else if(p == 2) {
+        cdf_distance = torch::sqrt(torch::sum(torch::pow((cdf_tensor_a-cdf_tensor_b),2),-1));
+    }else {
+        cdf_distance = torch::pow(torch::sum(torch::pow(torch::abs(cdf_tensor_a-cdf_tensor_b),p),-1),1/p);
+    }
+    auto cdf_loss = cdf_distance.mean();
+    return cdf_loss;
 }
